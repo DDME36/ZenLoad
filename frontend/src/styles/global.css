@@ -2511,9 +2511,22 @@ body:has(.fetch-app) { background: #101016; background-image: radial-gradient(el
 .fetch-notice { color: #e2c78e; font-size: 12px; margin-top: 10px; text-align: center; }
 
 /* ===== Zen Obsidian Bento Grid System ===== */
+/* ===== Bento Platforms Section with Rich Animations ===== */
 .zen-bento-section {
   margin: 36px 0 24px;
   padding: 0;
+  animation: bentoFadeIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes bentoFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .zen-bento-header {
@@ -2532,6 +2545,22 @@ body:has(.fetch-app) { background: #101016; background-image: radial-gradient(el
   margin: 0 0 6px;
 }
 
+.zen-bento-sparkle {
+  display: inline-block;
+  animation: bentoSparkle 3s ease-in-out infinite;
+}
+
+@keyframes bentoSparkle {
+  0%, 100% {
+    transform: scale(1) rotate(0deg);
+    filter: drop-shadow(0 0 0px rgba(168, 85, 247, 0));
+  }
+  50% {
+    transform: scale(1.22) rotate(15deg);
+    filter: drop-shadow(0 0 8px rgba(168, 85, 247, 0.8));
+  }
+}
+
 .zen-bento-subtitle {
   font-size: 0.82rem;
   color: #a49aaf;
@@ -2544,113 +2573,149 @@ body:has(.fetch-app) { background: #101016; background-image: radial-gradient(el
   gap: 14px;
 }
 
+/* Card Animation & Hover Styling */
 .zen-bento-card {
   position: relative;
   background: rgba(22, 18, 38, 0.75);
   background-image: var(--card-gradient, none);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 18px;
-  padding: 18px;
+  padding: 16px 18px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  gap: 14px;
-  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1),
-              border-color 0.28s ease,
-              box-shadow 0.28s ease;
+  gap: 12px;
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
+  cursor: default;
+  /* Card Stagger Entrance Animation */
+  opacity: 0;
+  animation: bentoCardIn 0.55s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation-delay: var(--stagger-delay, 0s);
+  transition: transform 0.32s cubic-bezier(0.16, 1, 0.3, 1),
+              border-color 0.32s ease,
+              box-shadow 0.32s ease,
+              background 0.32s ease;
+}
+
+@keyframes bentoCardIn {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .zen-bento-card:hover {
-  transform: translateY(-2px);
-  border-color: var(--card-border-hover, rgba(168, 85, 247, 0.4));
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
-}
-
-.zen-bento-card--highlight {
-  border-color: rgba(0, 242, 234, 0.25);
-  box-shadow: 0 4px 20px rgba(0, 242, 234, 0.08);
+  transform: translateY(-5px) scale(1.015);
+  border-color: var(--card-border-hover, rgba(168, 85, 247, 0.45));
+  box-shadow: 0 16px 36px -8px var(--card-glow, rgba(168, 85, 247, 0.2)),
+              0 0 0 1px var(--card-border-hover, rgba(168, 85, 247, 0.3));
 }
 
 .zen-bento-card__top {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 10px;
 }
 
 .zen-bento-card__icon-wrap {
   width: 38px;
   height: 38px;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.06);
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.08);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #ffffff;
-  transition: transform 0.25s ease;
+  flex-shrink: 0;
+  transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1),
+              box-shadow 0.35s ease,
+              border-color 0.35s ease,
+              background 0.35s ease;
 }
 
 .zen-bento-card:hover .zen-bento-card__icon-wrap {
-  transform: scale(1.08);
-}
-
-.zen-bento-badge {
-  font-size: 0.68rem;
-  font-weight: 700;
-  padding: 3px 8px;
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.08);
-  color: #e2d9f3;
-  letter-spacing: 0.3px;
-}
-
-.zen-bento-badge--pulse {
-  background: rgba(0, 242, 234, 0.15);
-  color: #00f2ea;
-  border: 1px solid rgba(0, 242, 234, 0.3);
+  transform: scale(1.15) rotate(6deg);
+  border-color: var(--brand-color, rgba(255, 255, 255, 0.2));
+  box-shadow: 0 0 16px var(--brand-color, rgba(255, 255, 255, 0.3));
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .zen-bento-card__name {
   font-size: 0.98rem;
   font-weight: 700;
   color: #ffffff;
-  margin: 0 0 4px;
-}
-
-.zen-bento-card__desc {
-  font-size: 0.78rem;
-  color: #bbb3c9;
-  line-height: 1.45;
   margin: 0;
+  letter-spacing: -0.2px;
 }
 
-.zen-bento-card__tags {
+/* Media Types Row - Clean Icons & Pills */
+.zen-bento-card__media-row {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 6px;
 }
 
-.zen-bento-tag {
-  font-size: 0.7rem;
-  font-weight: 500;
-  padding: 3px 8px;
-  border-radius: 6px;
+.zen-media-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 9px;
+  border-radius: 9999px;
   background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  color: #a49aaf;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  color: #c4bcd3;
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.1px;
+  transition: transform 0.2s ease,
+              background 0.2s ease,
+              border-color 0.2s ease,
+              color 0.2s ease;
 }
 
+.zen-media-chip__icon {
+  color: #a49aaf;
+  transition: transform 0.2s ease, color 0.2s ease;
+}
+
+.zen-bento-card:hover .zen-media-chip {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(255, 255, 255, 0.14);
+  color: #f1edfa;
+}
+
+.zen-bento-card:hover .zen-media-chip__icon {
+  color: var(--brand-color, #ffffff);
+}
+
+.zen-media-chip:hover {
+  transform: translateY(-2px);
+  background: rgba(255, 255, 255, 0.12) !important;
+  border-color: var(--brand-color, rgba(255, 255, 255, 0.25)) !important;
+  color: #ffffff !important;
+}
+
+.zen-media-chip:hover .zen-media-chip__icon {
+  transform: scale(1.15);
+}
+
+/* Bottom Perks Section with Animations */
 .zen-bento-footer {
   display: flex;
   justify-content: center;
   flex-wrap: wrap;
   gap: 16px 24px;
-  margin-top: 20px;
+  margin-top: 22px;
   padding-top: 18px;
   border-top: 1px solid rgba(255, 255, 255, 0.07);
+  animation: bentoFadeIn 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: 0.4s;
 }
 
 .zen-bento-perk {
@@ -2659,6 +2724,36 @@ body:has(.fetch-app) { background: #101016; background-image: radial-gradient(el
   gap: 7px;
   font-size: 0.78rem;
   color: #c9c2d7;
+  padding: 4px 8px;
+  border-radius: 8px;
+  transition: transform 0.2s ease, color 0.2s ease;
+}
+
+.zen-bento-perk:hover {
+  transform: translateY(-1px);
+  color: #ffffff;
+}
+
+.zen-bento-perk__icon {
+  display: inline-block;
+  animation: perkFloat 3s ease-in-out infinite alternate;
+}
+
+.zen-bento-perk:nth-child(2) .zen-bento-perk__icon {
+  animation-delay: 0.6s;
+}
+
+.zen-bento-perk:nth-child(3) .zen-bento-perk__icon {
+  animation-delay: 1.2s;
+}
+
+@keyframes perkFloat {
+  0% {
+    transform: translateY(0);
+  }
+  100% {
+    transform: translateY(-3px);
+  }
 }
 
 /* Layout Utility Classes */
@@ -2762,10 +2857,10 @@ body:has(.fetch-app) { background: #101016; background-image: radial-gradient(el
     display: none;
   }
   .zen-bento-card {
-    flex: 0 0 210px;
+    flex: 0 0 175px;
     scroll-snap-align: start;
     padding: 12px 14px;
-    gap: 8px;
+    gap: 10px;
     border-radius: 14px;
   }
   .zen-bento-card__icon-wrap {
@@ -2774,22 +2869,18 @@ body:has(.fetch-app) { background: #101016; background-image: radial-gradient(el
   }
   .zen-bento-card__name {
     font-size: 0.88rem;
-    margin: 0 0 2px;
   }
-  .zen-bento-card__desc {
-    font-size: 0.72rem;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-    line-height: 1.35;
-  }
-  .zen-bento-card__tags {
+  .zen-bento-card__media-row {
     gap: 4px;
   }
-  .zen-bento-tag {
+  .zen-media-chip {
     font-size: 0.65rem;
-    padding: 2px 6px;
+    padding: 2px 7px;
+    gap: 4px;
+  }
+  .zen-media-chip__icon {
+    width: 11px;
+    height: 11px;
   }
   .zen-bento-footer {
     display: none; /* ซ่อนส่วนท้ายยาวๆ เพื่อไม่ให้ดันประวัติดาวน์โหลดตกจอ */
