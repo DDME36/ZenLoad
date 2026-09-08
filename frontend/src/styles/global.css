@@ -113,6 +113,11 @@
   box-sizing: border-box; 
   margin: 0; 
   padding: 0; 
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
 }
 
 html, body {
@@ -132,6 +137,11 @@ body {
   position: relative;
   /* ปิด transition background บน body เพื่อตัดแสงขาววาบและอาการ fade ตอนกด F5 ทิ้ง 100% */
   transition: color 0.2s ease;
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  -webkit-touch-callout: none;
 }
 
 /* Skip Link สำหรับการนำทางด้วยคีย์บอร์ด (WCAG 2.2 AAA) */
@@ -157,16 +167,30 @@ body {
   box-shadow: 0 0 25px rgba(168, 85, 247, 0.8) !important;
 }
 
-/* ห้ามลากคลุมเฉพาะปุ่มและไอคอน เพื่อป้องกันการเผลอลากคลุมโดยไม่ตั้งใจ */
-button, .btn, .dl-btn, .badge, .zen-bento-badge, .platform-badge, .history-card__badge {
+/* ปิดการลากคลุมข้อความ (Disable Text Selection) ทั่วทั้งเว็บ เพื่อให้เป็น Native App UI ที่ลื่นไหล */
+button, .btn, .dl-btn, .badge, .zen-bento-badge, .platform-badge, .history-card__badge,
+p, h1, h2, h3, h4, h5, h6, span, strong, code, pre, label, a, div, li, ul, ol {
   user-select: none;
   -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  -webkit-touch-callout: none;
 }
 
-/* อนุญาตให้เลือกและคัดลอกข้อความ ชื่อไฟล์ รหัสข้อผิดพลาด ได้ตามปกติ */
-p, h1, h2, h3, h4, h5, h6, span, strong, input, textarea, code, pre {
-  user-select: text;
-  -webkit-user-select: text;
+/* อนุญาตให้พิมพ์ เลือกข้อความ และวางลิงก์ในช่องกรอกข้อมูล (Input & Textarea) ได้ตามปกติ */
+input, textarea, [contenteditable="true"] {
+  user-select: text !important;
+  -webkit-user-select: text !important;
+  -moz-user-select: text !important;
+  -ms-user-select: text !important;
+  -webkit-touch-callout: default !important;
+}
+
+/* ป้องกันการเผลอลากรูปภาพ */
+img {
+  -webkit-user-drag: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 /* ปุ่มกลับไปวิเคราะห์ลิงก์อื่น */
