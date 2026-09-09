@@ -39,6 +39,11 @@ describe('Elysia HTTP API Endpoints & Security Integration Tests', () => {
     expect(res.status).toBe(404)
   })
 
+  it('should not expose backend logs over the public API', async () => {
+    const res = await app.handle(new Request('http://localhost/api/logs'))
+    expect(res.status).toBe(404)
+  })
+
   it('should block SSRF attacks on /api/proxy-image', async () => {
     // Cloud metadata attack (Oracle/AWS/GCP IMDS)
     const res1 = await app.handle(

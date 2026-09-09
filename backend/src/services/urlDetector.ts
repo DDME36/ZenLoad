@@ -1,4 +1,4 @@
-import type { DetectedUrl } from '../types'
+import type { ContentType, DetectedUrl } from '../types'
 import { parseAndValidateUrl } from '../utils/security'
 
 function isHost(hostname: string, target: string): boolean {

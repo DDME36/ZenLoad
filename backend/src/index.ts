@@ -7,7 +7,7 @@ import { getFacebookInfo, downloadFacebook } from './services/facebook'
 import { getSoundcloudInfo, downloadSoundcloud } from './services/soundcloud'
 import { getGenericInfo, downloadGeneric } from './services/generic'
 import { AppError } from './utils/errors'
-import { log, initCookies, getTempDir, getLogFilePath } from './utils/helpers'
+import { log, initCookies, getTempDir } from './utils/helpers'
 import { mediaCache } from './utils/cache'
 import { saveBoundedStream } from './utils/streamFile'
 import { unlink } from 'node:fs/promises'
@@ -572,27 +572,6 @@ export const app = new Elysia()
       jobId: t.Optional(t.String()),
       token: t.Optional(t.String()),
     }))
-  })
-
-  // ===== ดู Log การทำงานของ Backend ตลอดเวลา (GET) =====
-  .get('/api/logs', async () => {
-    try {
-      const logPath = getLogFilePath()
-      const file = Bun.file(logPath)
-      if (await file.exists()) {
-        const text = await file.text()
-        const lines = text.trim().split('\n')
-        return {
-          success: true,
-          totalLines: lines.length,
-          logFilePath: logPath,
-          recentLogs: lines.slice(-300),
-        }
-      }
-      return { success: true, totalLines: 0, logFilePath: logPath, recentLogs: [] }
-    } catch (err: any) {
-      return { success: false, error: err.message }
-    }
   })
 
   // ===== ดาวน์โหลดไฟล์ (รองรับ Range / Resume และไม่สะสมใน JS RAM) =====
