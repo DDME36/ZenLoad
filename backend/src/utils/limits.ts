@@ -2,55 +2,25 @@ import { AppError } from './errors'
 import { statfs } from 'node:fs/promises'
 
 /**
- * Semaphore สำหรับควบคุม Concurrency และความยาวของคิวรอ
- * ออกแบบมาเพื่อจำกัดการใช้งาน CPU/RAM บน Oracle Ubuntu อย่างเคร่งครัด
+ * Synchronously reserves capacity without retaining waiting callers.
  */
-export class BoundedSemaphore {
+export class CapacityGate {
   private activeCount = 0
-  private queue: {
-    resolve: () => void
-    reject: (err: Error) => void
-    timer: any
-  }[] = []
 
   constructor(
-    private maxConcurrency: number,
-    private maxQueueLength: number,
-    private queueTimeoutMs: number = 30000,
-    private queueBusyCode: string = 'SERVER_BUSY',
-    private queueBusyMessage: string = 'เซิร์ฟเวอร์มีคำขอหนาแน่น กรุณารอสักครู่แล้วลองใหม่ครับ'
+    private readonly maxConcurrency: number,
+    private readonly busyError: AppError
   ) {}
 
-  async acquire(): Promise<void> {
-    if (this.activeCount < this.maxConcurrency) {
-      this.activeCount++
-      return
-    }
+  tryAcquire(): (() => void) | null {
+    if (this.activeCount >= this.maxConcurrency) return null
 
-    if (this.queue.length >= this.maxQueueLength) {
-      throw new AppError(this.queueBusyCode, this.queueBusyMessage, 429)
-    }
-
-    return new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        const idx = this.queue.findIndex(item => item.resolve === resolve)
-        if (idx !== -1) {
-          this.queue.splice(idx, 1)
-          reject(new AppError('QUEUE_TIMEOUT', 'คำขอของคุณรอในคิวนานเกินไป กรุณาลองใหม่อีกครั้ง', 504))
-        }
-      }, this.queueTimeoutMs)
-
-      this.queue.push({ resolve, reject, timer })
-    })
-  }
-
-  release(): void {
-    this.activeCount--
-    const next = this.queue.shift()
-    if (next) {
-      clearTimeout(next.timer)
-      this.activeCount++
-      next.resolve()
+    this.activeCount += 1
+    let released = false
+    return () => {
+      if (released) return
+      released = true
+      this.activeCount = Math.max(0, this.activeCount - 1)
     }
   }
 
@@ -58,39 +28,37 @@ export class BoundedSemaphore {
     return this.activeCount
   }
 
-  getQueueLength(): number {
-    return this.queue.length
-  }
-
-  canAdmit(): boolean {
-    return (this.activeCount < this.maxConcurrency) || (this.queue.length < this.maxQueueLength)
+  getLimit(): number {
+    return this.maxConcurrency
   }
 
   getBusyError(): AppError {
-    return new AppError(this.queueBusyCode, this.queueBusyMessage, 429)
+    return this.busyError
   }
 }
 
-// Semaphore สำหรับวิเคราะห์ URL (yt-dlp --dump-json ใช้ RAM เยอะ)
+export const CAPACITY_RETRY_AFTER_SECONDS = 5
+
+// Capacity สำหรับวิเคราะห์ URL (yt-dlp --dump-json ใช้ RAM เยอะ)
 const MAX_CONCURRENT_ANALYZES = parseInt(process.env.MAX_CONCURRENT_ANALYZES || '2', 10)
-const MAX_ANALYZE_QUEUE = parseInt(process.env.MAX_ANALYZE_QUEUE || '5', 10)
-export const analyzeSemaphore = new BoundedSemaphore(
+export const analyzeCapacity = new CapacityGate(
   MAX_CONCURRENT_ANALYZES,
-  MAX_ANALYZE_QUEUE,
-  35000,
-  'ANALYZER_BUSY',
-  'ระบบกำลังวิเคราะห์ลิงก์อื่นอยู่เต็มคิว กรุณารอสักครู่แล้วกดใหม่ครับ'
+  new AppError(
+    'ANALYZER_BUSY',
+    'ระบบกำลังวิเคราะห์ลิงก์อื่นอยู่ กรุณาลองใหม่อีกครั้งในอีกสักครู่ครับ',
+    429
+  )
 )
 
-// Semaphore สำหรับดาวน์โหลดไฟล์
+// Capacity สำหรับดาวน์โหลดไฟล์
 const MAX_CONCURRENT_DOWNLOADS = parseInt(process.env.MAX_CONCURRENT_DOWNLOADS || '2', 10)
-const MAX_DOWNLOAD_QUEUE = parseInt(process.env.MAX_DOWNLOAD_QUEUE || '5', 10)
-export const downloadSemaphore = new BoundedSemaphore(
+export const downloadCapacity = new CapacityGate(
   MAX_CONCURRENT_DOWNLOADS,
-  MAX_DOWNLOAD_QUEUE,
-  60000,
-  'DOWNLOAD_QUEUE_FULL',
-  'คิวดาวน์โหลดบนเซิร์ฟเวอร์เต็มชั่วคราว กรุณารอ 30 วินาทีแล้วลองใหม่ครับ'
+  new AppError(
+    'DOWNLOAD_BUSY',
+    'ระบบกำลังดาวน์โหลดไฟล์อื่นอยู่ กรุณาลองใหม่อีกครั้งในอีกสักครู่ครับ',
+    429
+  )
 )
 
 /**

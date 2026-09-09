@@ -9,7 +9,8 @@ import {
   completeJob,
   abortJob,
 } from '../src/services/jobManager'
-import { BoundedSemaphore, IpRateLimiter } from '../src/utils/limits'
+import { CapacityGate, IpRateLimiter } from '../src/utils/limits'
+import { AppError } from '../src/utils/errors'
 
 describe('SQLite Job Manager & Security Tests', () => {
   beforeAll(async () => {
@@ -114,40 +115,29 @@ describe('SQLite Job Manager & Security Tests', () => {
   })
 })
 
-describe('BoundedSemaphore Tests', () => {
-  it('should respect max concurrency and max queue limits', async () => {
-    const sem = new BoundedSemaphore(1, 2, 5000)
+describe('CapacityGate Tests', () => {
+  it('rejects a third immediate acquisition without retaining a waiter, then admits after release', () => {
+    const gate = new CapacityGate(2, new AppError('TEST_BUSY', 'busy', 429))
 
-    // 1st acquire succeeds immediately
-    await sem.acquire()
-    expect(sem.getActiveCount()).toBe(1)
-    expect(sem.getQueueLength()).toBe(0)
+    const firstLease = gate.tryAcquire()
+    const secondLease = gate.tryAcquire()
 
-    // 2nd acquire is queued
-    let secondAcquired = false
-    const p2 = sem.acquire().then(() => { secondAcquired = true })
-    expect(sem.getQueueLength()).toBe(1)
+    expect(firstLease).toBeFunction()
+    expect(secondLease).toBeFunction()
+    expect(gate.getActiveCount()).toBe(2)
+    expect(gate.tryAcquire()).toBeNull()
+    expect(gate.getActiveCount()).toBe(2)
 
-    // 3rd acquire is queued
-    let thirdAcquired = false
-    const p3 = sem.acquire().then(() => { thirdAcquired = true })
-    expect(sem.getQueueLength()).toBe(2)
+    firstLease?.()
+    expect(gate.getActiveCount()).toBe(1)
 
-    // 4th acquire exceeds max queue (2) -> rejected with 429
-    await expect(sem.acquire()).rejects.toThrow()
+    const replacementLease = gate.tryAcquire()
+    expect(replacementLease).toBeFunction()
+    expect(gate.getActiveCount()).toBe(2)
 
-    // Release 1st -> 2nd completes
-    sem.release()
-    await p2
-    expect(secondAcquired).toBe(true)
-
-    // Release 2nd -> 3rd completes
-    sem.release()
-    await p3
-    expect(thirdAcquired).toBe(true)
-
-    sem.release()
-    expect(sem.getActiveCount()).toBe(0)
+    secondLease?.()
+    replacementLease?.()
+    expect(gate.getActiveCount()).toBe(0)
   })
 })
 
