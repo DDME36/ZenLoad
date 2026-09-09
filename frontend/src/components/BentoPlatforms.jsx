@@ -161,7 +161,7 @@ function BentoPlatforms() {
         </div>
         <div className="zen-bento-perk">
           <ShieldCheck size={14} className="zen-bento-perk__icon text-purple" aria-hidden="true" />
-          <span>ปลอดภัย 100% ไม่มีโฆษณาสแปม</span>
+          <span>ใช้งานง่าย ไม่มีโฆษณาสแปม</span>
         </div>
         <div className="zen-bento-perk">
           <Layers size={14} className="zen-bento-perk__icon text-purple" aria-hidden="true" />
