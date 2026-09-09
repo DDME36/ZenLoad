@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'bun:test'
 import { app } from '../src/index'
 import { safeFetch } from '../src/utils/security'
-import { downloadSemaphore } from '../src/utils/limits'
+import { downloadCapacity } from '../src/utils/limits'
 import { killProcessTree } from '../src/utils/process'
 import { createJob, completeJob, getJob } from '../src/services/jobManager'
 import { ensureTempDir } from '../src/utils/helpers'
@@ -82,12 +82,12 @@ describe('Zentyr Fetch - End-to-End Integration & Security Tests', () => {
     })
   })
 
-  // ===== P0 Item 2: Queue Admission / Rejection & No Zombie Job =====
-  describe('P0-2: Queue Admission Control & Zombie Job Prevention', () => {
-    it('should reject with 429 when queue is full and NOT create a zombie job in DB', async () => {
-      const origCanAdmit = downloadSemaphore.canAdmit.bind(downloadSemaphore)
+  // ===== P0 Item 2: Immediate Capacity Rejection & No Zombie Job =====
+  describe('P0-2: Capacity Admission / Rejection & Zombie Job Prevention', () => {
+    it('should reject with 429 when download capacity is full', async () => {
+      const firstLease = downloadCapacity.tryAcquire()
+      const secondLease = downloadCapacity.tryAcquire()
       try {
-        downloadSemaphore.canAdmit = () => false
 
         // Now send download start request via HTTP POST
         const res = await app.handle(
@@ -104,13 +104,15 @@ describe('Zentyr Fetch - End-to-End Integration & Security Tests', () => {
         expect(res.status).toBe(429)
         const data = await res.json()
         expect(data.success).toBe(false)
-        expect(data.error.code).toBe('DOWNLOAD_QUEUE_FULL')
+        expect(data.error.code).toBe('DOWNLOAD_BUSY')
       } finally {
-        downloadSemaphore.canAdmit = origCanAdmit
+        firstLease?.()
+        secondLease?.()
       }
 
-      // Verify semaphore can admit again
-      expect(downloadSemaphore.canAdmit()).toBe(true)
+      const replacementLease = downloadCapacity.tryAcquire()
+      expect(replacementLease).toBeFunction()
+      replacementLease?.()
     })
   })
 

@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'bun:test'
+import { Database } from 'bun:sqlite'
+import { join } from 'node:path'
 import { app } from '../src/index'
+import { mediaCache } from '../src/utils/cache'
+import { analyzeCapacity, downloadCapacity } from '../src/utils/limits'
+import { getDataDir } from '../src/utils/helpers'
 
 describe('Elysia HTTP API Endpoints & Security Integration Tests', () => {
   it('should verify /health endpoint returns safe system stats', async () => {
@@ -8,7 +13,10 @@ describe('Elysia HTTP API Endpoints & Security Integration Tests', () => {
     const data = await res.json()
     expect(data.status).toBe('ok')
     expect(data.name).toBe('Zentyr Fetch')
-    expect(data.concurrency).toBeDefined()
+    expect(data.concurrency).toEqual({
+      analyzing: { active: 0, limit: 2 },
+      downloading: { active: 0, limit: 2 },
+    })
   })
 
   it('should verify /api/system/status does NOT leak cookies', async () => {
@@ -28,6 +36,11 @@ describe('Elysia HTTP API Endpoints & Security Integration Tests', () => {
 
   it('should confirm /api/debug-cookies endpoint is removed (404)', async () => {
     const res = await app.handle(new Request('http://localhost/api/debug-cookies'))
+    expect(res.status).toBe(404)
+  })
+
+  it('should not expose backend logs over the public API', async () => {
+    const res = await app.handle(new Request('http://localhost/api/logs'))
     expect(res.status).toBe(404)
   })
 
@@ -58,6 +71,61 @@ describe('Elysia HTTP API Endpoints & Security Integration Tests', () => {
     const data = await res.json()
     expect(data.success).toBe(false)
     expect(data.error.code).toBe('INVALID_URL')
+  })
+
+  it('returns a cached analysis without consuming an analysis lease', async () => {
+    const url = 'https://www.youtube.com/watch?v=cachedMedia'
+    const firstLease = analyzeCapacity.tryAcquire()
+    const secondLease = analyzeCapacity.tryAcquire()
+    mediaCache.set(url, { platform: 'youtube', title: 'Cached media', options: [] } as any)
+
+    try {
+      const res = await app.handle(
+        new Request('http://localhost/api/analyze', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url }),
+        })
+      )
+
+      expect(res.status).toBe(200)
+      expect((await res.json()).data.title).toBe('Cached media')
+      expect(analyzeCapacity.getActiveCount()).toBe(2)
+    } finally {
+      firstLease?.()
+      secondLease?.()
+      mediaCache.clear()
+    }
+  })
+
+  it('rejects a download at full capacity before creating a SQLite job', async () => {
+    const database = new Database(join(getDataDir(), 'zentyr_fetch_jobs.db'))
+    const beforeCount = (database.query('SELECT count(*) AS count FROM jobs').get() as { count: number }).count
+    const firstLease = downloadCapacity.tryAcquire()
+    const secondLease = downloadCapacity.tryAcquire()
+
+    try {
+      const res = await app.handle(
+        new Request('http://localhost/api/download/start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            url: 'https://www.youtube.com/watch?v=capacityFull',
+            option: 'video_720p',
+          }),
+        })
+      )
+
+      expect(res.status).toBe(429)
+      expect((await res.json()).error.code).toBe('DOWNLOAD_BUSY')
+      const afterCount = (database.query('SELECT count(*) AS count FROM jobs').get() as { count: number }).count
+      expect(afterCount).toBe(beforeCount)
+      expect(downloadCapacity.getActiveCount()).toBe(2)
+    } finally {
+      firstLease?.()
+      secondLease?.()
+      database.close()
+    }
   })
 
   it('should create a download job via POST /api/download/start and verify access token', async () => {

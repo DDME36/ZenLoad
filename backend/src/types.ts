@@ -57,6 +57,8 @@ export interface MediaInfo {
   platform: Platform
   contentType?: ContentType
   title: string
+  author?: string
+  uploader?: string
   thumbnail?: string
   description?: string
   items: MediaItem[]

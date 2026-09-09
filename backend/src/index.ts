@@ -7,7 +7,7 @@ import { getFacebookInfo, downloadFacebook } from './services/facebook'
 import { getSoundcloudInfo, downloadSoundcloud } from './services/soundcloud'
 import { getGenericInfo, downloadGeneric } from './services/generic'
 import { AppError } from './utils/errors'
-import { log, initCookies, getTempDir, getLogFilePath } from './utils/helpers'
+import { log, initCookies, getTempDir } from './utils/helpers'
 import { mediaCache } from './utils/cache'
 import { saveBoundedStream } from './utils/streamFile'
 import { unlink } from 'node:fs/promises'
@@ -22,8 +22,8 @@ import {
   safeFetch,
 } from './utils/security'
 import {
-  analyzeSemaphore,
-  downloadSemaphore,
+  analyzeCapacity,
+  downloadCapacity,
   analyzeRateLimiter,
   downloadRateLimiter,
   assertSufficientDiskSpace,
@@ -73,32 +73,23 @@ async function runDownloadJob(
   option: string,
   platform: string,
   identifier: string | undefined,
-  abortController: AbortController
+  abortController: AbortController,
+  releaseCapacity: () => void
 ) {
-  try {
-    await downloadSemaphore.acquire()
-  } catch (queueErr) {
-    const msg = queueErr instanceof Error ? queueErr.message : String(queueErr)
-    failJob(jobId, msg)
-    log('error', `Job ${jobId} failed to acquire download semaphore: ${msg}`)
-    return
-  }
-
   const signal = abortController.signal
-  if (signal.aborted) {
-    downloadSemaphore.release()
-    return
-  }
-
-  setJobDownloading(jobId)
-
-  // Max duration timeout
-  const timeoutTimer = setTimeout(() => {
-    log('warn', `Job ${jobId} exceeded max duration (${MAX_DOWNLOAD_DURATION_MS}ms), aborting...`)
-    abortJob(jobId).catch(() => {})
-  }, MAX_DOWNLOAD_DURATION_MS)
+  let timeoutTimer: ReturnType<typeof setTimeout> | undefined
 
   try {
+    if (signal.aborted) return
+
+    setJobDownloading(jobId)
+
+    // Max duration timeout
+    timeoutTimer = setTimeout(() => {
+      log('warn', `Job ${jobId} exceeded max duration (${MAX_DOWNLOAD_DURATION_MS}ms), aborting...`)
+      abortJob(jobId).catch(() => {})
+    }, MAX_DOWNLOAD_DURATION_MS)
+
     let result: DownloadResult
     const progressCallback = (progress: number, stage?: DownloadStage) => {
       if (!signal.aborted) {
@@ -173,7 +164,7 @@ async function runDownloadJob(
     completeJob(jobId, result.filePath, result.filename, result.contentType, fileSize)
     log('info', `Job ${jobId} completed successfully (${(fileSize / 1024 / 1024).toFixed(1)} MB)`)
   } catch (error) {
-    clearTimeout(timeoutTimer)
+    if (timeoutTimer) clearTimeout(timeoutTimer)
     if (!signal.aborted) {
       const errorMsg = error instanceof Error ? error.message : String(error)
       const errorStack = error instanceof Error ? (error.stack || error.message) : String(error)
@@ -181,8 +172,8 @@ async function runDownloadJob(
       log('error', `Job ${jobId} failed: ${errorStack}`)
     }
   } finally {
-    clearTimeout(timeoutTimer)
-    downloadSemaphore.release()
+    if (timeoutTimer) clearTimeout(timeoutTimer)
+    releaseCapacity()
     if (process.env.NODE_ENV === 'production') Bun.gc(true)
   }
 }
@@ -203,10 +194,8 @@ export const app = new Elysia()
     name: 'Zentyr Fetch',
     time: new Date().toISOString(),
     concurrency: {
-      analyzing: analyzeSemaphore.getActiveCount(),
-      analyzingQueue: analyzeSemaphore.getQueueLength(),
-      downloading: downloadSemaphore.getActiveCount(),
-      downloadingQueue: downloadSemaphore.getQueueLength()
+      analyzing: { active: analyzeCapacity.getActiveCount(), limit: analyzeCapacity.getLimit() },
+      downloading: { active: downloadCapacity.getActiveCount(), limit: downloadCapacity.getLimit() },
     }
   }))
 
@@ -241,10 +230,8 @@ export const app = new Elysia()
         galleryDl: await checkGalleryDl(),
       },
       concurrency: {
-        analyzing: analyzeSemaphore.getActiveCount(),
-        analyzingQueue: analyzeSemaphore.getQueueLength(),
-        downloading: downloadSemaphore.getActiveCount(),
-        downloadingQueue: downloadSemaphore.getQueueLength(),
+        analyzing: { active: analyzeCapacity.getActiveCount(), limit: analyzeCapacity.getLimit() },
+        downloading: { active: downloadCapacity.getActiveCount(), limit: downloadCapacity.getLimit() },
       }
     }
   })
@@ -337,8 +324,11 @@ export const app = new Elysia()
       return { success: true, data: cachedData }
     }
 
-    // 3. จอง Semaphore จำกัด Concurrency & Queue Length
-    await analyzeSemaphore.acquire()
+    // 3. Reserve analysis capacity without a waiting queue.
+    const releaseCapacity = analyzeCapacity.tryAcquire()
+    if (!releaseCapacity) {
+      return handleError(analyzeCapacity.getBusyError(), set)
+    }
 
     const abortCtrl = new AbortController()
     const timer = setTimeout(() => abortCtrl.abort(), MAX_ANALYZE_DURATION_MS)
@@ -449,7 +439,7 @@ export const app = new Elysia()
       clearTimeout(timer)
       return handleError(error, set)
     } finally {
-      analyzeSemaphore.release()
+      releaseCapacity()
     }
   }, {
     body: t.Object({
@@ -470,9 +460,10 @@ export const app = new Elysia()
       return { success: false, error: { code: 'INVALID_PARAMS', message: 'กรุณาระบุ URL และตัวเลือกที่ถูกต้อง' } }
     }
 
-    // 2. ตรวจสอบ Queue Admission (ห้ามสร้าง Job ใน SQLite หากคิวเต็ม)
-    if (!downloadSemaphore.canAdmit()) {
-      const busyErr = downloadSemaphore.getBusyError()
+    // 2. Reserve download capacity before disk checks and SQLite job creation.
+    const releaseCapacity = downloadCapacity.tryAcquire()
+    if (!releaseCapacity) {
+      const busyErr = downloadCapacity.getBusyError()
       set.status = busyErr.statusCode
       return {
         success: false,
@@ -483,23 +474,29 @@ export const app = new Elysia()
       }
     }
 
-    // 3. ตรวจสอบพื้นที่ว่างบนดิสก์
-    await assertSufficientDiskSpace(getTempDir())
+    let capacityTransferred = false
+    try {
+      // 3. ตรวจสอบพื้นที่ว่างบนดิสก์
+      await assertSufficientDiskSpace(getTempDir())
 
-    const detected = detectUrl(url)
+      const detected = detectUrl(url)
 
-    // 4. สร้าง Job ลง SQLite พร้อม Access Token
-    const { jobId, accessToken, abortController } = createJob({
-      url: detected.originalUrl,
-      optionId: option,
-      platform: detected.platform,
-      identifier: detected.identifier,
-    })
+      // 4. สร้าง Job ลง SQLite พร้อม Access Token
+      const { jobId, accessToken, abortController } = createJob({
+        url: detected.originalUrl,
+        optionId: option,
+        platform: detected.platform,
+        identifier: detected.identifier,
+      })
 
-    // 5. สั่งรัน Worker ในพื้นหลังทันที
-    runDownloadJob(jobId, detected.originalUrl, option, detected.platform, detected.identifier, abortController)
+      // 5. Start the worker with the capacity lease already reserved.
+      runDownloadJob(jobId, detected.originalUrl, option, detected.platform, detected.identifier, abortController, releaseCapacity)
+      capacityTransferred = true
 
-    return { success: true, jobId, accessToken }
+      return { success: true, jobId, accessToken }
+    } finally {
+      if (!capacityTransferred) releaseCapacity()
+    }
   }, {
     body: t.Object({
       url: t.String(),
@@ -575,27 +572,6 @@ export const app = new Elysia()
       jobId: t.Optional(t.String()),
       token: t.Optional(t.String()),
     }))
-  })
-
-  // ===== ดู Log การทำงานของ Backend ตลอดเวลา (GET) =====
-  .get('/api/logs', async () => {
-    try {
-      const logPath = getLogFilePath()
-      const file = Bun.file(logPath)
-      if (await file.exists()) {
-        const text = await file.text()
-        const lines = text.trim().split('\n')
-        return {
-          success: true,
-          totalLines: lines.length,
-          logFilePath: logPath,
-          recentLogs: lines.slice(-300),
-        }
-      }
-      return { success: true, totalLines: 0, logFilePath: logPath, recentLogs: [] }
-    } catch (err: any) {
-      return { success: false, error: err.message }
-    }
   })
 
   // ===== ดาวน์โหลดไฟล์ (รองรับ Range / Resume และไม่สะสมใน JS RAM) =====

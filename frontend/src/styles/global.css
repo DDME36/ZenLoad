@@ -2495,7 +2495,8 @@ body:has(.fetch-app) { background: #101016; background-image: radial-gradient(el
   background: rgba(168, 85, 247, 0.08);
   border: 1px solid rgba(168, 85, 247, 0.2);
   color: #d8b4fe;
-  padding: 6px 14px;
+  min-height: 44px;
+  padding: 8px 14px;
   border-radius: 8px;
   cursor: pointer;
   font: inherit;
@@ -3490,5 +3491,20 @@ button:active:not(:disabled) {
   .confirm-btn-danger {
     padding: 11px 12px;
     font-size: 0.84rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html:focus-within {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }
