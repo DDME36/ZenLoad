@@ -43,7 +43,7 @@ export function profileImageFromHtml(html: string, targetUsername?: string): str
     }
 
     for (const [key, child] of Object.entries(value)) {
-      visit(child, depth + 1, currentIsViewer || key === 'viewer')
+      visit(child, depth + 1, currentIsViewer || key === 'viewer' || key === 'PolarisViewer')
     }
   }
 
@@ -74,17 +74,5 @@ export function profileImageFromHtml(html: string, targetUsername?: string): str
     }
   }
 
-  const bestParsed = candidates.filter(c => /^https:\/\//.test(c.url)).sort((a, b) => b.rank - a.rank)[0]?.url
-  if (bestParsed) return bestParsed
-
-  // Fallback: direct profile_pic_url_hd regex
-  const hdMatch = html.match(/"profile_pic_url_hd"\s*:\s*"([^"]+)"/i)
-  if (hdMatch?.[1]) {
-    return hdMatch[1]
-      .replace(/\\u0026/g, '&')
-      .replace(/\\\//g, '/')
-      .replace(/\\u00253D/gi, '%3D')
-  }
-
-  return undefined
+  return candidates.filter(c => /^https:\/\//.test(c.url)).sort((a, b) => b.rank - a.rank)[0]?.url
 }

@@ -239,23 +239,23 @@ export async function getInstagramInfo(
         }
       }
 
-      // 2. ดึงรูปโปรไฟล์ HD จาก JSON ในหน้าเว็บ
-      profilePicUrl = profileImageFromHtml(html, cleanUsername) || ''
-
-      // 3. ตรวจสอบ og:image เพิ่มเติม
-      if (!profilePicUrl) {
-        const ogMatch = html.match(/<meta\s+property="og:image"\s+content="([^"]+)"/i)
-        if (ogMatch) {
-          const pic = decodeAllHtmlEntities(ogMatch[1])
-          if (
-            !pic.includes('instagram-logo') && 
-            !pic.includes('static/images') && 
-            !pic.includes('rsrc.php') &&
-            !pic.includes('static.cdninstagram.com')
-          ) {
-            profilePicUrl = pic
-          }
+      // 1. ตรวจสอบ og:image ของผู้ใช้เป้าหมายก่อน (ในหน้า SSR ของ Instagram og:image จะเป็นรูปของโปรไฟล์เป้าหมายเสมอ)
+      const ogMatch = html.match(/<meta\s+property="og:image"\s+content="([^"]+)"/i)
+      if (ogMatch) {
+        const pic = decodeAllHtmlEntities(ogMatch[1])
+        if (
+          !pic.includes('instagram-logo') && 
+          !pic.includes('static/images') && 
+          !pic.includes('rsrc.php') &&
+          !pic.includes('static.cdninstagram.com')
+        ) {
+          profilePicUrl = pic
         }
+      }
+
+      // 2. หากไม่พบ og:image ค่อยค้นหาจาก JSON ของผู้ใช้เป้าหมายในหน้าเว็บ
+      if (!profilePicUrl) {
+        profilePicUrl = profileImageFromHtml(html, cleanUsername) || ''
       }
 
       if (profilePicUrl) {
