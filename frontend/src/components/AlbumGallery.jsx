@@ -21,6 +21,7 @@ function AlbumGallery({
   onCancel,
   onShare,
   onReset,
+  onNewSearch,
 }) {
   const [selectedIndex, setSelectedIndex] = useState(0)
 
@@ -174,10 +175,13 @@ function AlbumGallery({
             lastDownloadedFilename={lastDownloadedFilename}
             lastDownloadedUrl={lastDownloadedUrl}
             platform={platform}
+            hasMultipleOptions={true}
+            isProfileOrImage={!isSelectedAudio}
             onCancel={onCancel}
             onRetry={onCancel}
             onShare={onShare}
             onReset={onReset}
+            onNewSearch={onNewSearch}
           />
         ) : (
           selectedItem.options && selectedItem.options.map((opt) => (

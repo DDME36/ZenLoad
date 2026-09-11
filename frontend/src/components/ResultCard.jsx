@@ -45,7 +45,7 @@ const PLATFORM_CONFIG = {
   direct: { label: 'Direct Media', icon: Film, color: '#10b981' },
 }
 
-export default function ResultCard({ data, originalUrl }) {
+export default function ResultCard({ data, originalUrl, onNewSearch }) {
   const [downloading, setDownloading] = useState(null)
   const [activeOption, setActiveOption] = useState(null)
   const [downloadProgress, setDownloadProgress] = useState(0)
@@ -58,10 +58,32 @@ export default function ResultCard({ data, originalUrl }) {
   const [lastDownloadedFilename, setLastDownloadedFilename] = useState('')
   const [showShareModal, setShowShareModal] = useState(false)
 
+  const cardRef = useRef(null)
+  const progressPanelRef = useRef(null)
   const timerRef = useRef(null)
   const abortControllerRef = useRef(null)
   const jobIdRef = useRef(null)
   const tokenRef = useRef(null)
+
+  // เลื่อนหน้าจอมายัง Result Card อย่างนุ่มนวลอัตโนมัติบนมือถือเมื่อการวิเคราะห์เสร็จสมบูรณ์
+  useEffect(() => {
+    if (cardRef.current && typeof window !== 'undefined' && window.innerWidth <= 768) {
+      const timer = setTimeout(() => {
+        cardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }, 80)
+      return () => clearTimeout(timer)
+    }
+  }, [])
+
+  // เมื่อดาวน์โหลดเสร็จสิ้น เลื่อนปุ่มบันทึก/ส่งแชร์มาอยู่ในระยะสายตาและนิ้วโป้งของผู้ใช้ทันที
+  useEffect(() => {
+    if (downloadStatus === 'done' && progressPanelRef.current && typeof window !== 'undefined' && window.innerWidth <= 768) {
+      const timer = setTimeout(() => {
+        progressPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+      }, 80)
+      return () => clearTimeout(timer)
+    }
+  }, [downloadStatus])
 
   useEffect(() => {
     const ua = navigator.userAgent || ''
@@ -243,12 +265,19 @@ export default function ResultCard({ data, originalUrl }) {
     data.contentType === 'profile' ||
     data.contentType === 'image' ||
     (imageOptions.length > 0 && videoOptions.length === 0 && !isAlbum)
+  const isProfile = data.contentType === 'profile' || (isImageOnly && !isAlbum)
+  const hasMultipleOptions = totalOptions.length > 1 || isAlbum
 
   const platformInfo = PLATFORM_CONFIG[data.platform] || { label: data.platform, icon: Film, color: '#8b5cf6' }
   const PlatformIcon = platformInfo.icon
 
   return (
-    <div className={`result-card result-card--${data.platform} animate-scale-in`} role="region" aria-label="ผลลัพธ์การวิเคราะห์">
+    <div
+      ref={cardRef}
+      className={`result-card result-card--${data.platform} ${isProfile ? 'result-card--profile' : ''} ${isImageOnly ? 'result-card--image-only' : ''} animate-scale-in`}
+      role="region"
+      aria-label="ผลลัพธ์การวิเคราะห์"
+    >
       {/* Mobile Save / iOS Safari Modal */}
       <MobileShareModal
         isOpen={showShareModal}
@@ -291,6 +320,7 @@ export default function ResultCard({ data, originalUrl }) {
             onCancel={handleCancel}
             onShare={() => setShowShareModal(true)}
             onReset={handleReset}
+            onNewSearch={onNewSearch}
           />
         </div>
       ) : (
@@ -380,21 +410,26 @@ export default function ResultCard({ data, originalUrl }) {
 
             {/* In-Place Download Progress or Action Button Groups */}
             {downloading ? (
-              <DownloadProgressPanel
-                downloadStatus={downloadStatus}
-                downloadStage={downloadStage}
-                downloadProgress={downloadProgress}
-                elapsedTime={elapsedTime}
-                downloadError={downloadError}
-                activeOption={activeOption}
-                lastDownloadedFilename={lastDownloadedFilename}
-                lastDownloadedUrl={lastDownloadedUrl}
-                platform={platformInfo.label}
-                onCancel={handleCancel}
-                onRetry={handleCancel}
-                onShare={() => setShowShareModal(true)}
-                onReset={handleReset}
-              />
+              <div ref={progressPanelRef} className="result-card__progress-container">
+                <DownloadProgressPanel
+                  downloadStatus={downloadStatus}
+                  downloadStage={downloadStage}
+                  downloadProgress={downloadProgress}
+                  elapsedTime={elapsedTime}
+                  downloadError={downloadError}
+                  activeOption={activeOption}
+                  lastDownloadedFilename={lastDownloadedFilename}
+                  lastDownloadedUrl={lastDownloadedUrl}
+                  platform={platformInfo.label}
+                  hasMultipleOptions={hasMultipleOptions}
+                  isProfileOrImage={isProfile || isImageOnly}
+                  onCancel={handleCancel}
+                  onRetry={handleCancel}
+                  onShare={() => setShowShareModal(true)}
+                  onReset={handleReset}
+                  onNewSearch={onNewSearch}
+                />
+              </div>
             ) : isSingleOption && singleOption ? (
               /* Single Option Hero Call-to-Action */
               <div className="result-card__hero-box animate-scale-in">

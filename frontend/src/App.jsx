@@ -114,7 +114,7 @@ export default function App() {
                 ← กลับไปวิเคราะห์ลิงก์อื่น
               </button>
             </div>
-            <ResultCard data={data} originalUrl={currentUrl} />
+            <ResultCard data={data} originalUrl={currentUrl} onNewSearch={reset} />
           </div>
         )}
 

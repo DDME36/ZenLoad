@@ -1321,9 +1321,105 @@ body::before {
     justify-content: center;
   }
   
-  .result-card__body { padding: 18px; }
+  .result-card__body { padding: 16px; }
   .result-card__actions { grid-template-columns: 1fr; }
   .dl-btn { width: 100%; }
+
+  /* Compact Profile & Single Image UX on Mobile */
+  .result-card--profile .result-card__preview,
+  .result-card--image-only .result-card__preview {
+    aspect-ratio: unset;
+    max-height: none;
+    padding: 22px 16px 14px 16px;
+    background: radial-gradient(circle at center, rgba(168, 85, 247, 0.16) 0%, rgba(13, 10, 20, 0.7) 85%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .result-card--profile .result-card__img--profile,
+  .result-card--image-only .result-card__img--profile {
+    width: 88px;
+    height: 88px;
+    border-radius: 50%;
+    border: 3px solid rgba(168, 85, 247, 0.5);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6), 0 0 20px rgba(168, 85, 247, 0.3);
+  }
+
+  .result-card--profile .platform-badge--floating,
+  .result-card--image-only .platform-badge--floating {
+    top: 10px;
+    left: 10px;
+    padding: 4px 10px;
+    font-size: 0.7rem;
+  }
+
+  .result-card--profile .result-card__body,
+  .result-card--image-only .result-card__body {
+    padding: 12px 16px 16px 16px;
+  }
+
+  .result-card--profile .result-card__meta,
+  .result-card--image-only .result-card__meta {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    margin-bottom: 10px;
+  }
+
+  .result-card--profile .result-card__title,
+  .result-card--image-only .result-card__title {
+    font-size: 1.12rem;
+    margin-bottom: 4px;
+    text-align: center;
+  }
+
+  .result-card--profile .result-card__desc,
+  .result-card--image-only .result-card__desc {
+    font-size: 0.82rem;
+    margin-bottom: 10px;
+    text-align: center;
+  }
+
+  .result-card--profile .result-card__specs-row,
+  .result-card--image-only .result-card__specs-row {
+    justify-content: center;
+    gap: 6px;
+    margin-bottom: 12px;
+  }
+
+  .result-card--profile .spec-chip,
+  .result-card--image-only .spec-chip {
+    font-size: 0.72rem;
+    padding: 3px 8px;
+  }
+
+  .result-card--profile .dl-btn--hero,
+  .result-card--image-only .dl-btn--hero {
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    padding: 13px 18px;
+    gap: 10px;
+  }
+
+  .result-card--profile .dl-btn__hero-right,
+  .result-card--image-only .dl-btn__hero-right {
+    width: auto;
+  }
+
+  .result-card__preview:not(.result-card__preview--square) {
+    max-height: 220px;
+  }
+
+  .result-view-wrapper {
+    gap: 10px;
+  }
+
+  .result-nav-row {
+    margin-bottom: 2px;
+  }
   
   .history-card {
     padding: 10px;
@@ -1736,14 +1832,72 @@ body::before {
 
 .download-result-panel__actions {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
+  flex-direction: column;
   gap: 10px;
   margin-top: 6px;
+  width: 100%;
+}
+
+.dl-btn--save-instant {
+  width: 100%;
+  padding: 14px 18px;
+  font-size: 0.98rem;
+  font-weight: 700;
+  border-radius: var(--radius-md);
+  justify-content: center;
+  gap: 10px;
+  background: linear-gradient(135deg, #9333ea 0%, #7e22ce 50%, #6b21a8 100%);
+  border: 1px solid rgba(192, 132, 252, 0.4);
+  color: #ffffff;
+  box-shadow: 0 6px 20px rgba(147, 51, 234, 0.4);
+}
+
+.dl-btn--save-instant:hover:not(:disabled) {
+  background: linear-gradient(135deg, #a855f7 0%, #9333ea 50%, #7e22ce 100%);
+  transform: translateY(-1px);
+}
+
+.download-result-panel__secondary-row {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}
+
+.download-result-panel__secondary-row > * {
+  flex: 1;
+  justify-content: center;
+}
+
+.download-result-panel__reset-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  justify-content: center;
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  width: 100%;
+}
+
+.back-home-btn--subtle {
+  background: transparent;
+  border-color: rgba(255, 255, 255, 0.12);
+  color: var(--text-muted);
+}
+
+.back-home-btn--subtle:hover {
+  border-color: rgba(255, 255, 255, 0.25);
+  color: var(--text-primary);
+}
+
+.dl-btn--sm {
+  padding: 9px 12px;
+  font-size: 0.8rem;
 }
 
 .download-result-panel__pwa-tip {
-  margin-top: 10px;
+  margin-top: 8px;
   padding: 10px 14px;
   border-radius: var(--radius-sm);
   background: rgba(168, 85, 247, 0.08);

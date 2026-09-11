@@ -11,10 +11,13 @@ export default function DownloadProgressPanel({
   activeOption = null,
   lastDownloadedFilename = '',
   lastDownloadedUrl = '',
+  hasMultipleOptions = false,
+  isProfileOrImage = false,
   onCancel,
   onRetry,
   onShare,
   onReset,
+  onNewSearch,
 }) {
   const [visualProgress, setVisualProgress] = useState(0)
   const [iosPwa, setIosPwa] = useState(false)
@@ -58,7 +61,7 @@ export default function DownloadProgressPanel({
       const resp = await fetch(targetUrl)
       const blob = await resp.blob()
       const ext = lastDownloadedFilename?.split('.').pop() || 'mp4'
-      const mime = blob.type || (ext === 'mp4' ? 'video/mp4' : ext === 'mp3' ? 'audio/mpeg' : 'image/jpeg')
+      const mime = blob.type || (ext === 'mp4' ? 'video/mp4' : ext === 'mp3' ? 'audio/mpeg' : ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : 'image/png')
       const file = new File([blob], lastDownloadedFilename || `media.${ext}`, { type: mime })
 
       if (navigator.canShare && navigator.canShare({ files: [file] })) {
@@ -96,59 +99,51 @@ export default function DownloadProgressPanel({
           <span className="download-result-panel__timer">ใช้เวลา {formatTime(elapsedTime)}</span>
         </div>
 
-        <div className="download-result-panel__body">
-          <h3 className="download-result-panel__title">ไฟล์พร้อมส่งมอบแล้ว!</h3>
-          <p className="download-result-panel__desc">
-            {iosPwa
-              ? 'ระบบจัดเตรียมไฟล์เรียบร้อยแล้ว แตะปุ่มด้านล่างเพื่อบันทึกลงแอปรูปภาพ (Photos) หรือส่งแชร์'
-              : 'เบราว์เซอร์เริ่มดาวน์โหลดไฟล์แล้ว ตรวจสอบรายการดาวน์โหลดของอุปกรณ์คุณ หรือกดบันทึก/ส่งแชร์ด้านล่าง'}
-          </p>
-          {lastDownloadedFilename && (
-            <div className="download-result-panel__file-chip" title={lastDownloadedFilename}>
-              <span className="download-result-panel__file-icon">📄</span>
-              <span className="download-result-panel__file-name">{lastDownloadedFilename}</span>
-            </div>
-          )}
-          {iosPwa && (
-            <p className="download-result-panel__pwa-tip">
-              💡 <strong>สำหรับ iPhone (PWA):</strong> แตะ <em>"บันทึกลงรูปภาพ (Photos) / แชร์"</em> แล้วเลือก <em>"บันทึกภาพ" (Save Image)</em> หรือ <em>"บันทึกวิดีโอ"</em> ไฟล์จะเข้าแอปรูปภาพทันที
-            </p>
-          )}
-        </div>
+        {lastDownloadedFilename && (
+          <div className="download-result-panel__file-chip" title={lastDownloadedFilename}>
+            <span className="download-result-panel__file-icon">
+              {isProfileOrImage ? '🖼️' : '📄'}
+            </span>
+            <span className="download-result-panel__file-name">{lastDownloadedFilename}</span>
+          </div>
+        )}
 
+        {/* Primary Instant Action Area - Positioned at the top for instant thumb tap on mobile */}
         <div className="download-result-panel__actions">
           {iosPwa ? (
             <>
               <button
                 type="button"
-                className="dl-btn dl-btn--primary"
+                className="dl-btn dl-btn--primary dl-btn--save-instant"
                 onClick={handleDirectShare}
                 disabled={isSharing}
               >
-                {isSharing ? <Loader2 size={15} className="lucide-spin" /> : <Share2 size={15} />}
+                {isSharing ? <Loader2 size={16} className="lucide-spin" /> : <Share2 size={16} />}
                 <span>{isSharing ? 'กำลังเตรียมไฟล์...' : 'บันทึกลงรูปภาพ (Photos) / แชร์'}</span>
               </button>
 
-              {onShare && (
-                <button
-                  type="button"
-                  className="dl-btn dl-btn--secondary"
-                  onClick={onShare}
-                >
-                  <FileUp size={15} /> ตัวเลือกเพิ่มเติม
-                </button>
-              )}
+              <div className="download-result-panel__secondary-row">
+                {onShare && (
+                  <button
+                    type="button"
+                    className="dl-btn dl-btn--secondary dl-btn--sm"
+                    onClick={onShare}
+                  >
+                    <FileUp size={14} /> ตัวเลือกเพิ่มเติม
+                  </button>
+                )}
 
-              {lastDownloadedUrl && (
-                <a
-                  href={resolveBackendUrl(lastDownloadedUrl)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="dl-btn dl-btn--ghost"
-                >
-                  <ExternalLink size={13} /> เปิดใน Safari (ภายนอก)
-                </a>
-              )}
+                {lastDownloadedUrl && (
+                  <a
+                    href={resolveBackendUrl(lastDownloadedUrl)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="dl-btn dl-btn--ghost dl-btn--sm"
+                  >
+                    <ExternalLink size={13} /> เปิดใน Safari
+                  </a>
+                )}
+              </div>
             </>
           ) : (
             <>
@@ -156,9 +151,9 @@ export default function DownloadProgressPanel({
                 <a
                   href={lastDownloadedUrl}
                   download={lastDownloadedFilename || 'download'}
-                  className="dl-btn dl-btn--primary"
+                  className="dl-btn dl-btn--primary dl-btn--save-instant"
                 >
-                  <Download size={15} /> กดดาวน์โหลดไฟล์
+                  <Download size={16} /> กดบันทึก / ดาวน์โหลดไฟล์
                 </a>
               )}
               {onShare && (
@@ -173,16 +168,35 @@ export default function DownloadProgressPanel({
             </>
           )}
 
-          {onReset && (
-            <button
-              type="button"
-              className="back-home-btn"
-              onClick={onReset}
-            >
-              <RotateCcw size={14} /> เลือกดาวน์โหลดรูปแบบอื่น
-            </button>
-          )}
+          {/* Format Switching OR New Search Button */}
+          <div className="download-result-panel__reset-row">
+            {hasMultipleOptions && onReset && (
+              <button
+                type="button"
+                className="back-home-btn"
+                onClick={onReset}
+              >
+                <RotateCcw size={14} /> เลือกดาวน์โหลดรูปแบบอื่น
+              </button>
+            )}
+
+            {(onNewSearch || (!hasMultipleOptions && onReset)) && (
+              <button
+                type="button"
+                className={`back-home-btn ${hasMultipleOptions ? 'back-home-btn--subtle' : ''}`}
+                onClick={onNewSearch || onReset}
+              >
+                <RotateCcw size={14} /> วิเคราะห์ลิงก์ใหม่
+              </button>
+            )}
+          </div>
         </div>
+
+        {iosPwa && (
+          <p className="download-result-panel__pwa-tip">
+            💡 <strong>สำหรับ iPhone (PWA):</strong> แตะ <em>"บันทึกลงรูปภาพ / แชร์"</em> แล้วเลือก <em>"บันทึกภาพ" (Save Image)</em> หรือ <em>"บันทึกวิดีโอ"</em> ไฟล์จะเข้าแอปรูปภาพทันที
+          </p>
+        )}
       </div>
     )
   }
@@ -212,6 +226,15 @@ export default function DownloadProgressPanel({
           >
             <RotateCcw size={15} /> ลองใหม่อีกครั้ง
           </button>
+          {onNewSearch && (
+            <button
+              type="button"
+              className="back-home-btn"
+              onClick={onNewSearch}
+            >
+              วิเคราะห์ลิงก์ใหม่
+            </button>
+          )}
         </div>
       </div>
     )
