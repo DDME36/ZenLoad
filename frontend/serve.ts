@@ -24,18 +24,34 @@ const server = Bun.serve({
     const file = Bun.file(filePath)
 
     if (await file.exists()) {
-      return new Response(file)
+      const mimeType = file.type || 'application/octet-stream'
+      const headers = new Headers({
+        'Content-Type': mimeType,
+        'Content-Length': String(file.size),
+        'Cache-Control': pathname.startsWith('/assets/')
+          ? 'public, max-age=31536000, immutable'
+          : 'public, max-age=3600',
+        'Accept-Ranges': 'bytes',
+      })
+
+      if (req.method === 'HEAD') {
+        return new Response(null, { status: 200, headers })
+      }
+      return new Response(file, { status: 200, headers })
     }
 
     // SPA Fallback: ส่ง index.html หากไม่พบไฟล์ตรงตัว (รองรับ Routing ภายในเว็บ)
     const indexFile = Bun.file(join(DIST_DIR, 'index.html'))
     if (await indexFile.exists()) {
-      return new Response(indexFile, {
-        headers: {
-          'Content-Type': 'text/html; charset=utf-8',
-          'Cache-Control': 'no-cache',
-        },
+      const headers = new Headers({
+        'Content-Type': 'text/html; charset=utf-8',
+        'Cache-Control': 'no-cache',
       })
+      if (req.method === 'HEAD') {
+        headers.set('Content-Length', String(indexFile.size))
+        return new Response(null, { status: 200, headers })
+      }
+      return new Response(indexFile, { status: 200, headers })
     }
 
     return new Response('Zenload Frontend build not found. Please run bun run build first.', { status: 404 })
