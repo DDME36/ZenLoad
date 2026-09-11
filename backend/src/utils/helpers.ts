@@ -166,6 +166,16 @@ export async function initCookies(): Promise<void> {
     }
   }
 
+  if (cachedCookiesPath && await Bun.file(cachedCookiesPath).exists()) {
+    try {
+      const content = await Bun.file(cachedCookiesPath).text()
+      if (content.charCodeAt(0) === 0xFEFF) {
+        await Bun.write(cachedCookiesPath, content.slice(1))
+        log('info', 'Cleaned UTF-8 BOM from cookies file')
+      }
+    } catch {}
+  }
+
   // Materialize environment cookies for gallery-dl and yt-dlp too, without
   // exposing session values in process arguments or changing the source file.
   const sessions = [

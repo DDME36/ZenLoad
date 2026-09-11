@@ -27,12 +27,11 @@ export async function getYoutubeInfo(url: string, signal?: AbortSignal): Promise
     return processYoutubeInfo(defaultRes.data)
   }
 
-  // 1.1 หากพบปัญหาจากคุกกี้ (เช่น "The page needs to be reloaded" หรือ session หลุด)
+  // 1.1 หากพบปัญหาจากคุกกี้ที่หมดอายุหรือ invalid ชัดเจน
   // ให้ลอง Fallback ทันทีโดยไม่ส่งคุกกี้ เพราะวิดีโอส่วนใหญ่สามารถดึงได้โดยตรง
   const isCookieIssue =
-    defaultRes.error?.includes('The page needs to be reloaded') ||
-    defaultRes.error?.toLowerCase().includes('cookie') ||
-    defaultRes.error?.includes('Sign in')
+    defaultRes.error?.includes('The provided YouTube account cookies are no longer valid') ||
+    defaultRes.error?.includes('The page needs to be reloaded')
     
   if (isCookieIssue) {
     log('warn', `YouTube cookie issue detected (${defaultRes.error?.trim().slice(0, 100)}). Retrying without cookies...`)
@@ -41,8 +40,6 @@ export async function getYoutubeInfo(url: string, signal?: AbortSignal): Promise
       log('info', `✅ Success without cookies for YouTube`)
       return processYoutubeInfo(noCookieRes.data)
     }
-    // หากไม่สำเร็จ ให้ใช้ error ล่าสุด
-    defaultRes = noCookieRes
   }
 
   // 2. วิเคราะห์ Error เพื่อตัดสินใจว่าจะ Retry Client หรือไม่
