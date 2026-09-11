@@ -6,25 +6,26 @@ import { getGenericInfo, downloadGeneric } from './generic'
 import { join } from 'path'
 import sharp from 'sharp'
 
-const UA_POOL_DESKTOP = [
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gecko/20100101 Firefox/132.0',
-]
-const UA_POOL_MOBILE = [
-  'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1',
-  'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36',
-  'Mozilla/5.0 (iPhone; CPU iPhone OS 17_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/131.0.0.0 Mobile/15E148 Safari/604.1',
-]
+const DESKTOP_CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+const DESKTOP_CHROME_HEADERS: Record<string, string> = {
+  'User-Agent': DESKTOP_CHROME_UA,
+  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+  'Accept-Language': 'en-US,en;q=0.9',
+  'Sec-CH-UA': '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+  'Sec-CH-UA-Mobile': '?0',
+  'Sec-CH-UA-Platform': '"Windows"',
+  'Sec-Fetch-Dest': 'document',
+  'Sec-Fetch-Mode': 'navigate',
+  'Sec-Fetch-Site': 'none',
+  'Sec-Fetch-User': '?1',
+  'Upgrade-Insecure-Requests': '1',
+}
+
+const MOBILE_SAFARI_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1'
 const UA_CRAWLER = 'facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)'
 
-function pickUA(pool: string[]): string {
-  return pool[Math.floor(Math.random() * pool.length)]
-}
 function humanDelay(): Promise<void> {
-  return new Promise(r => setTimeout(r, 80 + Math.random() * 300))
+  return new Promise(r => setTimeout(r, 80 + Math.random() * 220))
 }
 
 function isFacebookLoginWall(html: string): boolean {
@@ -151,17 +152,8 @@ export async function getFacebookInfo(
     const fbCookie = await getFacebookCookie()
     
     const headers: Record<string, string> = {
-      'User-Agent': pickUA(UA_POOL_DESKTOP),
-      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-      'Accept-Language': 'en-US,en;q=0.9',
-      'Sec-Fetch-Dest': 'document',
-      'Sec-Fetch-Mode': 'navigate',
-      'Sec-Fetch-Site': 'none',
-      'Sec-Fetch-User': '?1',
-      'Upgrade-Insecure-Requests': '1',
-    }
-    if (fbCookie) {
-      headers['Cookie'] = fbCookie
+      ...DESKTOP_CHROME_HEADERS,
+      ...(fbCookie ? { 'Cookie': fbCookie } : {}),
     }
 
     // 1. ดึงด้วย Desktop Chrome User-Agent ก่อนเสมอ (ได้ SSR HTML ตัวเต็มพร้อมรูปโปรไฟล์และหน้าปก)
@@ -192,7 +184,7 @@ export async function getFacebookInfo(
         : `https://mbasic.facebook.com/${cleanId}`
       const mbasicResp = await safeFetch(mbasicUrl, {
         headers: {
-          'User-Agent': pickUA(UA_POOL_MOBILE),
+          'User-Agent': MOBILE_SAFARI_UA,
           'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
           'Accept-Language': 'en-US,en;q=0.9',
           ...(fbCookie ? { 'Cookie': fbCookie } : {})
@@ -461,7 +453,13 @@ export async function downloadFacebook(
   log('info', 'Facebook: downloading image', { host: new URL(imageUrl).hostname, cached: !!cachedMeta, option: optionId })
 
   const imgResp = await safeFetch(imageUrl, { 
-    headers: { 'User-Agent': pickUA(UA_POOL_DESKTOP) }, 
+    headers: { 
+      'User-Agent': DESKTOP_CHROME_UA,
+      'Referer': 'https://www.facebook.com/',
+      'Sec-Fetch-Dest': 'image',
+      'Sec-Fetch-Mode': 'no-cors',
+      'Sec-Fetch-Site': 'cross-site',
+    }, 
     signal 
   })
   if (!imgResp.ok) throw new AppError('DOWNLOAD_FAILED', `ดาวน์โหลดรูปภาพไม่สำเร็จ (HTTP ${imgResp.status})`)
