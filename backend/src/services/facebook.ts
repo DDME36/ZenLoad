@@ -6,9 +6,26 @@ import { getGenericInfo, downloadGeneric } from './generic'
 import { join } from 'path'
 import sharp from 'sharp'
 
-const UA_MOBILE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1'
-const UA_DESKTOP = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+const UA_POOL_DESKTOP = [
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gecko/20100101 Firefox/132.0',
+]
+const UA_POOL_MOBILE = [
+  'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1',
+  'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36',
+  'Mozilla/5.0 (iPhone; CPU iPhone OS 17_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/131.0.0.0 Mobile/15E148 Safari/604.1',
+]
 const UA_CRAWLER = 'facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)'
+
+function pickUA(pool: string[]): string {
+  return pool[Math.floor(Math.random() * pool.length)]
+}
+function humanDelay(): Promise<void> {
+  return new Promise(r => setTimeout(r, 80 + Math.random() * 300))
+}
 
 function isFacebookLoginWall(html: string): boolean {
   const title = html.match(/<title[^>]*>([^<]*)/i)?.[1] || ''
@@ -134,9 +151,9 @@ export async function getFacebookInfo(
     const fbCookie = await getFacebookCookie()
     
     const headers: Record<string, string> = {
-      'User-Agent': UA_DESKTOP,
+      'User-Agent': pickUA(UA_POOL_DESKTOP),
       'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-      'Accept-Language': 'th-TH,th;q=0.9,en-US;q=0.8,en;q=0.7',
+      'Accept-Language': 'en-US,en;q=0.9',
       'Sec-Fetch-Dest': 'document',
       'Sec-Fetch-Mode': 'navigate',
       'Sec-Fetch-Site': 'none',
@@ -169,14 +186,15 @@ export async function getFacebookInfo(
     // 2. หากไม่สำเร็จ หรือเจอ Login wall ให้ลอง mbasic.facebook.com (HTML ล้วนแบบเบา ไม่มี JS/GraphQL)
     if (!resp.ok || isLoginWall) {
       log('info', `Facebook: trying mbasic fallback for "${cleanId}"`)
+      await humanDelay()
       const mbasicUrl = finalUrlType === 'photo'
         ? url.replace('www.facebook.com', 'mbasic.facebook.com').replace('web.facebook.com', 'mbasic.facebook.com')
         : `https://mbasic.facebook.com/${cleanId}`
       const mbasicResp = await safeFetch(mbasicUrl, {
         headers: {
-          'User-Agent': UA_MOBILE,
+          'User-Agent': pickUA(UA_POOL_MOBILE),
           'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-          'Accept-Language': 'th-TH,th;q=0.9,en-US;q=0.8,en;q=0.7',
+          'Accept-Language': 'en-US,en;q=0.9',
           ...(fbCookie ? { 'Cookie': fbCookie } : {})
         },
         signal,
@@ -195,6 +213,7 @@ export async function getFacebookInfo(
     // 3. หากยังไม่สำเร็จ ค่อย fallback ไปใช้ Facebook Crawler UA
     if (!resp.ok || isLoginWall) {
       log('info', `Facebook: fallback to Crawler UA for "${cleanId}"`)
+      await humanDelay()
       const crawlerHeaders: Record<string, string> = {
         'User-Agent': UA_CRAWLER,
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -442,7 +461,7 @@ export async function downloadFacebook(
   log('info', 'Facebook: downloading image', { host: new URL(imageUrl).hostname, cached: !!cachedMeta, option: optionId })
 
   const imgResp = await safeFetch(imageUrl, { 
-    headers: { 'User-Agent': UA_DESKTOP }, 
+    headers: { 'User-Agent': pickUA(UA_POOL_DESKTOP) }, 
     signal 
   })
   if (!imgResp.ok) throw new AppError('DOWNLOAD_FAILED', `ดาวน์โหลดรูปภาพไม่สำเร็จ (HTTP ${imgResp.status})`)

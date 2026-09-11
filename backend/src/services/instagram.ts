@@ -9,9 +9,27 @@ import sharp from 'sharp'
 import { getGalleryDlCommand } from '../adapters/galleryDl'
 import { killProcessTree } from '../utils/process'
 
-const UA_DESKTOP = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
-const UA_IG_APP = 'Instagram 275.0.0.27.98 Android (33/13; 420dpi; 1080x2400; samsung; SM-S918B; dm3q; qcom; en_US; 458229258)'
+const DESKTOP_CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+const DESKTOP_CHROME_HEADERS: Record<string, string> = {
+  'User-Agent': DESKTOP_CHROME_UA,
+  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+  'Accept-Language': 'en-US,en;q=0.9',
+  'Sec-CH-UA': '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+  'Sec-CH-UA-Mobile': '?0',
+  'Sec-CH-UA-Platform': '"Windows"',
+  'Sec-Fetch-Dest': 'document',
+  'Sec-Fetch-Mode': 'navigate',
+  'Sec-Fetch-Site': 'none',
+  'Sec-Fetch-User': '?1',
+  'Upgrade-Insecure-Requests': '1',
+}
+
 const IG_APP_ID = '936619743392459'
+
+/** หน่วงเวลาเล็กน้อยเหมือน browser จริง (80-300ms) */
+function humanDelay(): Promise<void> {
+  return new Promise(r => setTimeout(r, 80 + Math.random() * 220))
+}
 
 /**
  * ดึง Cookie ของ Instagram จาก cookies.txt หรือ Environment Variable
@@ -193,51 +211,78 @@ export async function getInstagramInfo(
 
   log('info', `Instagram: processing profile @${cleanUsername}`)
 
-  // Method 1: Anonymous / Authenticated API
+  // Method 1: Direct Web HTML Navigation (ส่ง Header เสมือนเปิดผ่าน Google Chrome บน Windows 100%)
   try {
     const igCookie = await getInstagramCookieHeader()
-    if (igCookie) {
-      // ตรวจสอบว่าเป็นบัญชีของตัวเองใน Cookie หรือไม่ (API current_user มักตอบกลับ 200 OK ได้เสถียร)
-      try {
-        const cuResp = await safeFetch('https://www.instagram.com/api/v1/accounts/current_user/?edit=true', {
-          headers: {
-            'User-Agent': UA_IG_APP,
-            'X-IG-App-ID': IG_APP_ID,
-            'Accept': 'application/json',
-            'Cookie': igCookie,
-          },
-          signal,
-        })
-        if (cuResp.ok) {
-          const cuData = await cuResp.json() as any
-          const cuUser = cuData?.user
-          if (cuUser && cuUser.username?.toLowerCase() === cleanUsername.toLowerCase()) {
-            displayName = (cuUser.full_name || '').trim() ? `${cuUser.full_name} (@${cleanUsername})` : `@${cleanUsername}`
-            profilePicUrl = cuUser.hd_profile_pic_url_info?.url || cuUser.profile_pic_url || ''
-            resolution = '1080x1080px (Full HD จากบัญชีของคุณ)'
+    const navHeaders: Record<string, string> = {
+      ...DESKTOP_CHROME_HEADERS,
+      ...(igCookie ? { 'Cookie': igCookie } : {}),
+    }
+
+    const resp = await safeFetch(`https://www.instagram.com/${cleanUsername}/`, {
+      headers: navHeaders,
+      signal,
+    })
+
+    log('info', 'Instagram: profile HTML navigation response', { status: resp.status, cookiePresent: !!igCookie })
+
+    if (resp.ok) {
+      const html = await resp.text()
+
+      // 1. ดึงชื่อโปรไฟล์จาก <title>
+      const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i)
+      if (titleMatch) {
+        const rawTitle = decodeAllHtmlEntities(titleMatch[1]).trim()
+        const cleaned = rawTitle.replace(/\s*•\s*Instagram.*$/i, '').trim()
+        if (cleaned && !cleaned.toLowerCase().includes('login') && !cleaned.toLowerCase().includes('error')) {
+          displayName = cleaned
+        }
+      }
+
+      // 2. ดึงรูปโปรไฟล์ HD จาก JSON ในหน้าเว็บ
+      profilePicUrl = profileImageFromHtml(html, cleanUsername) || ''
+
+      // 3. ตรวจสอบ og:image เพิ่มเติม
+      if (!profilePicUrl) {
+        const ogMatch = html.match(/<meta\s+property="og:image"\s+content="([^"]+)"/i)
+        if (ogMatch) {
+          const pic = decodeAllHtmlEntities(ogMatch[1])
+          if (
+            !pic.includes('instagram-logo') && 
+            !pic.includes('static/images') && 
+            !pic.includes('rsrc.php') &&
+            !pic.includes('static.cdninstagram.com')
+          ) {
+            profilePicUrl = pic
           }
         }
-      } catch {}
-    }
+      }
 
-    // Method 0: gallery-dl Avatar Extractor (ดึงผ่าน mobile API ภายในโดยตรง ไม่ติด 429 และรองรับบัญชี Private)
-    if (!profilePicUrl) {
-      try {
-        const gdlResult = await getInstagramAvatarViaGalleryDl(cleanUsername, signal)
-        if (gdlResult && gdlResult.profilePicUrl) {
-          log('info', `Instagram: extracted profile avatar via gallery-dl successfully`)
-          profilePicUrl = gdlResult.profilePicUrl
-          displayName = gdlResult.displayName
-          resolution = gdlResult.resolution
-        }
-      } catch (err) {
-        log('warn', `Instagram: gallery-dl avatar extraction attempt failed: ${(err as Error).message}`)
+      if (profilePicUrl) {
+        log('info', `Instagram: extracted profile avatar via direct web navigation successfully`)
+        resolution = '1080x1080px (Full HD)'
+      } else if (html.includes('PolarisErrorRoot') || html.includes('checkpoint_required')) {
+        log('warn', `Instagram: profile @${cleanUsername} returned error/checkpoint page`)
+      }
+    } else {
+      const errText = await resp.text().catch(() => '')
+      if (resp.status === 429 || /please wait a few minutes|too many requests/i.test(errText)) {
+        upstreamError = new AppError('RATE_LIMITED', 'Instagram จำกัดคำขอจาก IP หรือ session ของเซิร์ฟเวอร์', 429,
+          'หยุดลองซ้ำชั่วคราว แล้วตรวจ session และเส้นทางเครือข่ายบนเซิร์ฟเวอร์ ข้อความนี้ไม่ได้หมายความว่าบัญชีเป็น Private')
       }
     }
+  } catch (e) {
+    if (e instanceof AppError) upstreamError = e
+    else log('warn', `Instagram: HTML navigation failed -> ${(e as Error).message}`)
+  }
 
-    if (!profilePicUrl) {
+  // Method 2: web_profile_info API (Fallback)
+  if (!profilePicUrl) {
+    try {
+      const igCookie = await getInstagramCookieHeader()
+      await humanDelay()
       const headers: Record<string, string> = {
-        'User-Agent': UA_DESKTOP,
+        'User-Agent': DESKTOP_CHROME_UA,
         'X-IG-App-ID': IG_APP_ID,
         'Accept': 'application/json',
         'X-ASBD-ID': '129477',
@@ -247,6 +292,7 @@ export async function getInstagramInfo(
         'Sec-Fetch-Site': 'same-origin',
         'Sec-Fetch-Mode': 'cors',
         'Sec-Fetch-Dest': 'empty',
+        'Accept-Language': 'en-US,en;q=0.9',
       }
       if (igCookie) {
         headers['Cookie'] = igCookie
@@ -295,103 +341,50 @@ export async function getInstagramInfo(
             'กรุณาเปิดแอป Instagram บนมือถือเพื่อกดยืนยันตัวตน ("This was me") เพื่อปลดล็อกบัญชี หรือใช้ลิงก์วิดีโอ/Reels สาธารณะแทนครับ'
           )
         }
-        log('warn', `Instagram: web_profile_info returned ${apiResp.status}, falling back to HTML scrape...`)
       }
+    } catch (e) {
+      if (e instanceof AppError) upstreamError = e
+      else log('warn', `Instagram: web_profile_info API failed -> ${(e as Error).message}`)
     }
-  } catch (e) {
-    if (e instanceof AppError) upstreamError = e
-    else log('warn', `Instagram: API failed -> ${(e as Error).message}`)
   }
 
-  // Method 2: HTML Scrape Fallback
+  // Method 3: gallery-dl Avatar Extractor (Fallback)
   if (!profilePicUrl) {
-    log('info', `Instagram: trying HTML scrape fallback...`)
     try {
-      const igCookie = await getInstagramCookieHeader()
-      const reqHeaders: Record<string, string> = {
-        'User-Agent': UA_DESKTOP,
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'th-TH,th;q=0.9,en-US;q=0.8,en;q=0.7',
+      const gdlResult = await getInstagramAvatarViaGalleryDl(cleanUsername, signal)
+      if (gdlResult && gdlResult.profilePicUrl) {
+        log('info', `Instagram: extracted profile avatar via gallery-dl successfully`)
+        profilePicUrl = gdlResult.profilePicUrl
+        displayName = gdlResult.displayName
+        resolution = gdlResult.resolution
       }
-      if (igCookie) {
-        reqHeaders['Cookie'] = igCookie
-      }
-      const resp = await safeFetch(`https://www.instagram.com/${cleanUsername}/`, {
-        headers: reqHeaders,
+    } catch (err) {
+      log('warn', `Instagram: gallery-dl avatar extraction attempt failed: ${(err as Error).message}`)
+    }
+  }
+
+  // Method 4: Crawler User-Agent สำหรับบัญชีสาธารณะ (Fallback)
+  if (!profilePicUrl) {
+    try {
+      const crawlerResp = await safeFetch(`https://www.instagram.com/${cleanUsername}/`, {
+        headers: {
+          'User-Agent': UA_CRAWLER,
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        },
         signal,
       })
-      log('info', 'Instagram: profile HTML response', { status: resp.status, cookiePresent: !!igCookie })
-      if (resp.ok) {
-        const html = await resp.text()
-
-        // 1. ดึงรูปโปรไฟล์โดยเจาะจงเฉพาะเป้าหมาย cleanUsername (ป้องกันการได้รูปของ viewer / เจ้าของคุกกี้)
-        profilePicUrl = profileImageFromHtml(html, cleanUsername) || ''
-        if (profilePicUrl) resolution = '1080x1080px (Full HD)'
-
-        // 2. ตรวจสอบ og:image
-        const ogMatch = html.match(/<meta\s+property="og:image"\s+content="([^"]+)"/i)
-        if (!profilePicUrl && ogMatch) {
-          const pic = decodeAllHtmlEntities(ogMatch[1])
-          if (
-            !pic.includes('instagram-logo') && 
-            !pic.includes('static/images') && 
-            !pic.includes('rsrc.php') &&
-            !pic.includes('static.cdninstagram.com')
-          ) {
-            profilePicUrl = pic
+      if (crawlerResp.ok) {
+        const crawlerHtml = await crawlerResp.text()
+        const cOgMatch = crawlerHtml.match(/<meta\s+property="og:image"\s+content="([^"]+)"/i)
+        if (cOgMatch) {
+          const cPic = decodeAllHtmlEntities(cOgMatch[1])
+          if (!cPic.includes('instagram-logo') && !cPic.includes('rsrc.php') && !cPic.includes('static.cdninstagram.com')) {
+            profilePicUrl = cPic
             resolution = '1080x1080px (Full HD)'
           }
         }
-
-        // 2.5 ลองดึงผ่าน Crawler User-Agent สำหรับบัญชีสาธารณะ
-        if (!profilePicUrl) {
-          try {
-            const crawlerResp = await safeFetch(`https://www.instagram.com/${cleanUsername}/`, {
-              headers: {
-                'User-Agent': UA_CRAWLER,
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-              },
-              signal,
-            })
-            if (crawlerResp.ok) {
-              const crawlerHtml = await crawlerResp.text()
-              const cOgMatch = crawlerHtml.match(/<meta\s+property="og:image"\s+content="([^"]+)"/i)
-              if (cOgMatch) {
-                const cPic = decodeAllHtmlEntities(cOgMatch[1])
-                if (!cPic.includes('instagram-logo') && !cPic.includes('rsrc.php') && !cPic.includes('static.cdninstagram.com')) {
-                  profilePicUrl = cPic
-                  resolution = '1080x1080px (Full HD)'
-                }
-              }
-            }
-          } catch {}
-        }
-
-        // 3. ถ้าไม่พบรูปและเป็น Error Page ให้โยน NOT_FOUND
-        if (!profilePicUrl && (html.includes('PolarisErrorRoot') || html.includes('httpErrorPage'))) {
-          log('warn', `Instagram: profile @${cleanUsername} returned error page (may be private or not found)`)
-          throw new AppError(
-            'NOT_FOUND',
-            `ไม่พบรูปโปรไฟล์ @${cleanUsername} (บัญชีนี้ถูกตั้งเป็นส่วนตัว Private หรือไม่มีผู้ใช้นี้)`,
-            404,
-            'หากเป็นบัญชีส่วนตัว บัญชี Instagram ในคุกกี้ต้องได้รับอนุมัติให้ติดตามก่อนจึงจะเข้าถึงได้ครับ'
-          )
-        }
       }
-    } catch (e) {
-      if (e instanceof AppError) {
-        if (e.code === 'TOO_MANY_REDIRECTS' || e.code === 'REDIRECT_LOOP') {
-          throw new AppError(
-            'AUTH_REQUIRED',
-            'คุกกี้ Instagram หมดอายุหรือติดการตรวจสอบความปลอดภัย (Checkpoint) จากระบบ กรุณาอัปเดต Cookie ใหม่ใน cookies.txt',
-            403,
-            'เปิดแอป Instagram บนมือถือเพื่อตรวจสอบและกดยืนยันตัวตน ("This was me") หรือคัดลอกคุกกี้ใหม่อีกครั้งครับ'
-          )
-        }
-        throw e
-      }
-      log('warn', `Instagram: HTML scrape failed -> ${(e as Error).message}`)
-    }
+    } catch {}
   }
 
   if (!profilePicUrl) {
@@ -484,7 +477,7 @@ export async function downloadInstagram(
   log('info', 'Instagram: downloading image', { host: new URL(imageUrl).hostname, cached: !!cachedMeta })
 
   const imgResp = await safeFetch(imageUrl, { 
-    headers: { 'User-Agent': UA_DESKTOP }, 
+    headers: { 'User-Agent': DESKTOP_CHROME_UA }, 
     signal 
   })
   if (!imgResp.ok) throw new AppError('DOWNLOAD_FAILED', `HTTP ${imgResp.status}`)

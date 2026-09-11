@@ -63,8 +63,8 @@ export function profileImageFromHtml(html: string, targetUsername?: string): str
 
     // Fallback: Targeted regex search specifically for cleanTarget
     const escapedTarget = cleanTarget.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    const userPattern = new RegExp(`"username"\\s*:\\s*"${escapedTarget}"[\\s\\S]{1,600}?"profile_pic_url(?:_hd)?"\\s*:\\s*"([^"]+)"`, 'i')
-    const altPattern = new RegExp(`"profile_pic_url(?:_hd)?"\\s*:\\s*"([^"]+)"[\\s\\S]{1,600}?"username"\\s*:\\s*"${escapedTarget}"`, 'i')
+    const userPattern = new RegExp(`"username"\\s*:\\s*"${escapedTarget}"[\\s\\S]{1,6000}?"profile_pic_url(?:_hd)?"\\s*:\\s*"([^"]+)"`, 'i')
+    const altPattern = new RegExp(`"profile_pic_url(?:_hd)?"\\s*:\\s*"([^"]+)"[\\s\\S]{1,6000}?"username"\\s*:\\s*"${escapedTarget}"`, 'i')
     const match = html.match(userPattern) || html.match(altPattern)
     if (match?.[1]) {
       return match[1]
@@ -74,5 +74,17 @@ export function profileImageFromHtml(html: string, targetUsername?: string): str
     }
   }
 
-  return candidates.filter(c => /^https:\/\//.test(c.url)).sort((a, b) => b.rank - a.rank)[0]?.url
+  const bestParsed = candidates.filter(c => /^https:\/\//.test(c.url)).sort((a, b) => b.rank - a.rank)[0]?.url
+  if (bestParsed) return bestParsed
+
+  // Fallback: direct profile_pic_url_hd regex
+  const hdMatch = html.match(/"profile_pic_url_hd"\s*:\s*"([^"]+)"/i)
+  if (hdMatch?.[1]) {
+    return hdMatch[1]
+      .replace(/\\u0026/g, '&')
+      .replace(/\\\//g, '/')
+      .replace(/\\u00253D/gi, '%3D')
+  }
+
+  return undefined
 }
