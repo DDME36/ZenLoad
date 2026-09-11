@@ -1,10 +1,49 @@
-let rawBase = import.meta.env.VITE_API_URL || ''
-if (typeof window !== 'undefined' && window.location.protocol === 'https:' && rawBase.startsWith('http://')) {
-  rawBase = ''
-}
-const API_BASE = rawBase
+/**
+ * กำหนด Base URL ของ Zenload API ให้เป็นมาตรฐาน:
+ * 1. ถ้ามี VITE_API_URL ใน Environment ให้ใช้ค่านั้น (เช่น 'https://zentyr.online/api/zenload')
+ * 2. ถ้าเปิดใช้งานบนโดเมนหลัก zentyr.online (เช่น https://zentyr.online/zenload) ให้ใช้ relative path '/api/zenload' ทันที (No CORS, No Mixed Content)
+ * 3. ถ้าเปิดใช้งานจากภายนอก (เช่น Vercel หรือโฮสต์อื่น) ให้ยิงเข้า 'https://zentyr.online/api/zenload'
+ * 4. ถ้าอยู่ใน Local Development (localhost) ให้ใช้ '/api/zenload' เพื่อส่งผ่าน Vite Dev Proxy ไปยัง port 3001
+ */
+function resolveApiBase() {
+  if (import.meta.env.VITE_API_URL) {
+    let base = import.meta.env.VITE_API_URL.trim().replace(/\/+$/, '')
+    if (typeof window !== 'undefined' && window.location.protocol === 'https:' && base.startsWith('http://')) {
+      base = base.replace(/^http:\/\//, 'https://')
+    }
+    return base
+  }
 
-// Timeout สำหรับ free tier (60 วินาที)
+  if (typeof window !== 'undefined') {
+    const host = window.location.hostname
+    // ถ้าอยู่บนโดเมน zentyr.online อยู่แล้ว ใช้ relative path ตรงๆ ได้เลย
+    if (host === 'zentyr.online' || host.endsWith('.zentyr.online')) {
+      return '/api/zenload'
+    }
+    // ถ้าเป็น localhost ให้ใช้ /api/zenload (ผ่าน Vite Proxy)
+    if (host === 'localhost' || host === '127.0.0.1') {
+      return '/api/zenload'
+    }
+    // ถ้าเป็น Vercel หรือโฮสต์ภายนอก ให้ยิงเข้า Production Domain HTTPS
+    return 'https://zentyr.online/api/zenload'
+  }
+
+  return 'https://zentyr.online/api/zenload'
+}
+
+export const API_BASE = resolveApiBase()
+
+/**
+ * สร้าง API Endpoint URL ให้สมบูรณ์และถูกต้องเสมอ ป้องกันปัญหา path ซ้ำซ้อน
+ */
+export function apiUrl(endpoint) {
+  const norm = endpoint.startsWith('/') ? endpoint : `/${endpoint}`
+  // ตัด /api ออกหาก API_BASE ลงท้ายด้วย /api/zenload เพื่อให้ได้ /api/zenload/analyze
+  const clean = norm.startsWith('/api/') ? norm.replace(/^\/api/, '') : norm
+  return `${API_BASE}${clean}`
+}
+
+// Timeout สำหรับการประมวลผล (60 วินาที)
 const ANALYZE_TIMEOUT = 60000
 const HEALTH_CHECK_TIMEOUT = 5000
 
@@ -19,7 +58,7 @@ export async function analyzeUrl(url, signal) {
   else signal?.addEventListener('abort', onAbort, { once: true })
 
   try {
-    const resp = await fetch(`${API_BASE}/api/analyze`, {
+    const resp = await fetch(apiUrl('/analyze'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url }),
@@ -60,13 +99,12 @@ export async function analyzeUrl(url, signal) {
 }
 
 /**
- * แปลง URL ให้ชี้ไปยัง Backend อย่างถูกต้อง (รองรับสถาปัตยกรรม Vercel Frontend + Oracle Backend)
+ * แปลง URL ให้ชี้ไปยัง Backend อย่างถูกต้อง (เช่น รูปภาพ Proxy หรือไฟล์ดาวน์โหลด)
  */
 export function resolveBackendUrl(path) {
   if (!path) return ''
   if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('data:')) return path
-  const normalizedPath = path.startsWith('/') ? path : `/${path}`
-  return `${API_BASE}${normalizedPath}`
+  return apiUrl(path)
 }
 
 /**
@@ -75,7 +113,7 @@ export function resolveBackendUrl(path) {
 export function getDirectDownloadUrl(jobId, token) {
   const params = new URLSearchParams({ jobId })
   if (token) params.set('token', token)
-  return `${API_BASE}/api/download?${params.toString()}`
+  return `${apiUrl('/download')}?${params.toString()}`
 }
 
 /**
@@ -83,14 +121,14 @@ export function getDirectDownloadUrl(jobId, token) {
  */
 export function getDownloadUrl(url, optionId) {
   const params = new URLSearchParams({ url, option: optionId })
-  return `${API_BASE}/api/download?${params.toString()}`
+  return `${apiUrl('/download')}?${params.toString()}`
 }
 
 /**
  * เริ่มต้นการดาวน์โหลดแบบ Asynchronous (POST: จองคิวและรับ Access Token)
  */
 export async function startDownload(url, optionId, signal) {
-  const resp = await fetch(`${API_BASE}/api/download/start`, {
+  const resp = await fetch(apiUrl('/download/start'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ url, option: optionId }),
@@ -109,7 +147,7 @@ export async function startDownload(url, optionId, signal) {
 export async function getDownloadStatus(jobId, token, signal) {
   const params = new URLSearchParams({ jobId })
   if (token) params.set('token', token)
-  const resp = await fetch(`${API_BASE}/api/download/status?${params.toString()}`, { signal })
+  const resp = await fetch(`${apiUrl('/download/status')}?${params.toString()}`, { signal })
   if (!resp.ok) {
     const errorData = await resp.json().catch(() => null)
     throw new Error(errorData?.error?.message || `เซิร์ฟเวอร์ตอบกลับ HTTP ${resp.status}`)
@@ -122,7 +160,7 @@ export async function getDownloadStatus(jobId, token, signal) {
  */
 export async function cancelDownload(jobId, token) {
   try {
-    await fetch(`${API_BASE}/api/download/cancel`, {
+    await fetch(apiUrl('/download/cancel'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ jobId, token }),
@@ -132,7 +170,6 @@ export async function cancelDownload(jobId, token) {
   }
 }
 
-
 /**
  * ตรวจสอบว่า backend ทำงานอยู่หรือไม่
  */
@@ -141,7 +178,7 @@ export async function checkHealth() {
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), HEALTH_CHECK_TIMEOUT)
     
-    const resp = await fetch(`${API_BASE}/health`, { signal: controller.signal })
+    const resp = await fetch(apiUrl('/health'), { signal: controller.signal })
     clearTimeout(timeoutId)
     return resp.ok
   } catch {

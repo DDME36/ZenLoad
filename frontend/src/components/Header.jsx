@@ -44,9 +44,9 @@ function Header() {
   return (
     <header className="fetch-header" role="banner">
       <div className="fetch-nav">
-        <a href="/" className="fetch-brand" aria-label="Zenload หน้าหลัก">
+        <a href={import.meta.env.BASE_URL || '/zenload/'} className="fetch-brand" aria-label="Zenload หน้าหลัก">
           <span className="fetch-mark">
-            <img src="/zenload-logo.png?v=zenload4" width="36" height="36" alt="โลโก้ Zenload" />
+            <img src={`${import.meta.env.BASE_URL || '/'}zenload-logo.png?v=zenload4`} width="36" height="36" alt="โลโก้ Zenload" />
           </span>
           <strong>Zenload</strong>
         </a>

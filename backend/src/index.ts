@@ -191,7 +191,16 @@ export const app = new Elysia()
   // ===== Health Check & Stats =====
   .get('/health', () => ({ 
     status: 'ok', 
-    name: 'Zentyr Fetch',
+    name: 'Zenload API',
+    time: new Date().toISOString(),
+    concurrency: {
+      analyzing: { active: analyzeCapacity.getActiveCount(), limit: analyzeCapacity.getLimit() },
+      downloading: { active: downloadCapacity.getActiveCount(), limit: downloadCapacity.getLimit() },
+    }
+  }))
+  .get('/api/health', () => ({ 
+    status: 'ok', 
+    name: 'Zenload API',
     time: new Date().toISOString(),
     concurrency: {
       analyzing: { active: analyzeCapacity.getActiveCount(), limit: analyzeCapacity.getLimit() },
@@ -660,6 +669,7 @@ const distExists = await Bun.file(join(frontendDistPath, 'index.html')).exists()
 if (process.env.NODE_ENV === 'production' || distExists) {
   app.get('*', async ({ path, set }) => {
     if (path.startsWith('/api/')) {
+      log('warn', `Unmatched API path: ${path}`)
       set.status = 404
       return { error: 'API endpoint not found' }
     }
