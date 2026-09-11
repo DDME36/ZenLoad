@@ -239,28 +239,87 @@ export async function getInstagramInfo(
         }
       }
 
-      // 1. ตรวจสอบ og:image ของผู้ใช้เป้าหมายก่อน (ในหน้า SSR ของ Instagram og:image จะเป็นรูปของโปรไฟล์เป้าหมายเสมอ)
-      const ogMatch = html.match(/<meta\s+property="og:image"\s+content="([^"]+)"/i)
-      if (ogMatch) {
-        const pic = decodeAllHtmlEntities(ogMatch[1])
-        if (
-          !pic.includes('instagram-logo') && 
-          !pic.includes('static/images') && 
-          !pic.includes('rsrc.php') &&
-          !pic.includes('static.cdninstagram.com')
-        ) {
-          profilePicUrl = pic
+      // 2. สกัด profile_id (numeric user ID) ของเป้าหมายจาก HTML เพื่อดึงรูป HD ต้นฉบับจริง (1080x1080 คมชัด 100% ไม่ใช่ 100x100)
+      const idMatch = html.match(/"profile_id"\s*:\s*"(\d+)"/i) || 
+                      html.match(/"target_id"\s*:\s*"(\d+)"/i) ||
+                      html.match(/"props":\{[^\}]*"id"\s*:\s*"(\d+)"/i)
+      const targetUserId = idMatch?.[1]
+
+      if (targetUserId) {
+        try {
+          const infoResp = await safeFetch(`https://www.instagram.com/api/v1/users/${targetUserId}/info/`, {
+            headers: {
+              'User-Agent': DESKTOP_CHROME_UA,
+              'Accept': '*/*',
+              'Accept-Language': 'en-US,en;q=0.9',
+              'X-IG-App-ID': IG_APP_ID,
+              'X-ASBD-ID': '129477',
+              'X-IG-WWW-Claim': '0',
+              'X-Requested-With': 'XMLHttpRequest',
+              'Referer': `https://www.instagram.com/${cleanUsername}/`,
+              'Sec-Fetch-Site': 'same-origin',
+              'Sec-Fetch-Mode': 'cors',
+              'Sec-Fetch-Dest': 'empty',
+              'Sec-CH-UA': '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+              'Sec-CH-UA-Mobile': '?0',
+              'Sec-CH-UA-Platform': '"Windows"',
+              ...(igCookie ? { 'Cookie': igCookie } : {}),
+            },
+            signal,
+          })
+
+          if (infoResp.ok) {
+            const uData = await infoResp.json() as any
+            const userObj = uData?.user
+            if (userObj) {
+              if (userObj.full_name?.trim()) {
+                displayName = `${userObj.full_name.trim()} (@${cleanUsername})`
+              }
+              if (userObj.hd_profile_pic_versions && Array.isArray(userObj.hd_profile_pic_versions) && userObj.hd_profile_pic_versions.length > 0) {
+                const sorted = [...userObj.hd_profile_pic_versions].sort((a: any, b: any) => (b.width || 0) - (a.width || 0))
+                profilePicUrl = sorted[0].url
+                resolution = `${sorted[0].width}x${sorted[0].height}px (Original HD)`
+              } else if (userObj.hd_profile_pic_url_info?.url) {
+                profilePicUrl = userObj.hd_profile_pic_url_info.url
+                resolution = '1080x1080px (Original HD)'
+              } else if (userObj.profile_pic_url_hd) {
+                profilePicUrl = userObj.profile_pic_url_hd
+                resolution = '1080x1080px (Original HD)'
+              }
+              if (profilePicUrl) {
+                log('info', `Instagram: extracted real native original HD profile pic via user ID API`)
+              }
+            }
+          }
+        } catch (e) {
+          log('warn', `Instagram: user ID info API failed -> ${(e as Error).message}`)
         }
       }
 
-      // 2. หากไม่พบ og:image ค่อยค้นหาจาก JSON ของผู้ใช้เป้าหมายในหน้าเว็บ
+      // 3. Fallback: หากดึง API ไม่สำเร็จ ให้ดึงจาก og:image
+      if (!profilePicUrl) {
+        const ogMatch = html.match(/<meta\s+property="og:image"\s+content="([^"]+)"/i)
+        if (ogMatch) {
+          const pic = decodeAllHtmlEntities(ogMatch[1])
+          if (
+            !pic.includes('instagram-logo') && 
+            !pic.includes('static/images') && 
+            !pic.includes('rsrc.php') &&
+            !pic.includes('static.cdninstagram.com')
+          ) {
+            profilePicUrl = pic
+            resolution = '1080x1080px (Full HD)'
+          }
+        }
+      }
+
+      // 4. Fallback: ค้นหาจาก JSON ของผู้ใช้เป้าหมายในหน้าเว็บ
       if (!profilePicUrl) {
         profilePicUrl = profileImageFromHtml(html, cleanUsername) || ''
       }
 
       if (profilePicUrl) {
-        log('info', `Instagram: extracted profile avatar via direct web navigation successfully`)
-        resolution = '1080x1080px (Full HD)'
+        log('info', `Instagram: extracted profile avatar successfully: ${resolution}`)
       } else if (html.includes('PolarisErrorRoot') || html.includes('checkpoint_required')) {
         log('warn', `Instagram: profile @${cleanUsername} returned error/checkpoint page`)
       }
